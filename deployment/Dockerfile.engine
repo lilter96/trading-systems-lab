@@ -1,0 +1,12 @@
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+COPY trading-node/engine-net/SMC.Engine.Core/*.csproj SMC.Engine.Core/
+COPY trading-node/engine-net/SMC.Engine.Service/*.csproj SMC.Engine.Service/
+RUN dotnet restore SMC.Engine.Service/SMC.Engine.Service.csproj
+COPY trading-node/engine-net/ ./
+RUN dotnet publish SMC.Engine.Service/SMC.Engine.Service.csproj -c Release -o /publish
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0
+WORKDIR /app
+COPY --from=build /publish .
+ENTRYPOINT ["dotnet", "SMC.Engine.Service.dll"]

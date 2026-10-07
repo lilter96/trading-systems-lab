@@ -1,0 +1,98 @@
+syntax = "proto3";
+
+package trading;
+
+option go_package = "trading-system/contracts/go/tradingpb";
+
+message TradeProposal {
+  string id = 1;
+  string asset = 2;
+  string direction = 3;
+  double entry = 4;
+  double sl = 5;
+  double tp = 6;
+  double risk_percent = 7;
+  double confluence_score = 8;
+}
+
+message OrderRequest {
+  string id = 1;
+  string asset = 2;
+  string direction = 3;
+  double price = 4;
+  double volume = 5;
+  string order_type = 6;
+}
+
+message ExecutionReport {
+  string order_id = 1;
+  string exchange_id = 2;
+  string status = 3;
+  double executed_price = 4;
+  double executed_volume = 5;
+  int64 timestamp = 6;
+}
+
+// --- Exchange State (Task 2.3) ---
+
+message ExchangeStateRequest {
+  repeated string inst_ids = 1;
+}
+
+message ExchangePosition {
+  string inst_id = 1;
+  string pos_side = 2;
+  string pos = 3;
+  string avg_px = 4;
+  string upl = 5;
+  string upl_ratio = 6;
+  string leveraged = 7;
+  string mgn = 8;
+  string mgn_mode = 9;
+  int64 ctime = 10;
+  int64 utime = 11;
+}
+
+message ExchangeOrder {
+  string inst_id = 1;
+  string ord_id = 2;
+  string cl_ord_id = 3;
+  string side = 4;
+  string ord_type = 5;
+  string state = 6;
+  string sz = 7;
+  string px = 8;
+  string fill_sz = 9;
+  string fill_px = 10;
+  string fee = 11;
+  string acc_fill_sz = 12;
+  string avg_px = 13;
+  int64 ctime = 14;
+  int64 utime = 15;
+}
+
+message ExchangeAlgoOrder {
+  string inst_id = 1;
+  string algo_id = 2;
+  string cl_ord_id = 3;
+  string side = 4;
+  string ord_type = 5;
+  string state = 6;
+  string sz = 7;
+  string trigger_px = 8;
+  string ord_px = 9;
+  string actual_sz = 10;
+  string actual_px = 11;
+  int64 ctime = 12;
+  int64 utime = 13;
+}
+
+message ExchangeStateResponse {
+  repeated ExchangePosition positions = 1;
+  repeated ExchangeOrder orders = 2;
+  repeated ExchangeAlgoOrder algo_orders = 3;
+}
+
+service ExchangeState {
+  rpc GetExchangeState(ExchangeStateRequest) returns (ExchangeStateResponse);
+}

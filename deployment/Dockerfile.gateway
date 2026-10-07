@@ -1,0 +1,11 @@
+FROM golang:1.23-alpine AS build
+WORKDIR /src
+COPY trading-node/gateway-go/go.mod trading-node/gateway-go/go.sum ./
+RUN go mod download
+COPY trading-node/gateway-go/ ./
+RUN CGO_ENABLED=0 go build -buildvcs=false -o /gateway .
+
+FROM alpine:3.20
+RUN apk add --no-cache ca-certificates
+COPY --from=build /gateway /gateway
+ENTRYPOINT ["/gateway"]

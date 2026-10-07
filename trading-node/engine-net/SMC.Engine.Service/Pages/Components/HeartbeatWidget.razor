@@ -1,0 +1,64 @@
+@implements IDisposable
+@inject DashboardStateService StateService
+
+<div class="card bg-light p-3 mb-3 border">
+    <h5 class="border-bottom border-secondary pb-2 text-dark">System Component Health</h5>
+    <div class="d-flex justify-content-between align-items-center my-2">
+        <div>
+            <span>Gateway (Go)</span>
+            <br><small class="text-muted">@TimeSince("gateway-go")</small>
+        </div>
+        <span class="badge @GetStatusClass("gateway-go") px-3 py-2">
+            @(IsHealthy("gateway-go") ? "ONLINE" : "OFFLINE")
+        </span>
+    </div>
+    <div class="d-flex justify-content-between align-items-center my-2">
+        <div>
+            <span>Engine (C#)</span>
+            <br><small class="text-muted">@TimeSince("engine-net")</small>
+        </div>
+        <span class="badge @GetStatusClass("engine-net") px-3 py-2">
+            @(IsHealthy("engine-net") ? "ONLINE" : "OFFLINE")
+        </span>
+    </div>
+</div>
+
+@code {
+    private const double OfflineThresholdSeconds = 150;
+    private readonly System.Timers.Timer _uiRefreshTimer = new(1000);
+    private Action<StateChangeKind> _handler = default!;
+
+    protected override void OnInitialized()
+    {
+        _handler = _ => InvokeAsync(StateHasChanged);
+        StateService.OnStateChanged += _handler;
+        _uiRefreshTimer.Elapsed += (s, e) => InvokeAsync(StateHasChanged);
+        _uiRefreshTimer.Start();
+    }
+
+    private bool IsHealthy(string component)
+    {
+        var beats = StateService.GetHeartbeats();
+        if (!beats.TryGetValue(component, out var lastTime)) return false;
+        return (DateTimeOffset.UtcNow - lastTime).TotalSeconds <= OfflineThresholdSeconds;
+    }
+
+    private string GetStatusClass(string component) => IsHealthy(component) ? "bg-success" : "bg-danger";
+
+    private string TimeSince(string component)
+    {
+        var beats = StateService.GetHeartbeats();
+        if (!beats.TryGetValue(component, out var lastTime)) return "never seen";
+        var elapsed = DateTimeOffset.UtcNow - lastTime;
+        if (elapsed.TotalSeconds < 60) return $"{(int)elapsed.TotalSeconds}s ago";
+        return elapsed.TotalMinutes < 60
+            ? $"{(int)elapsed.TotalMinutes}m {(int)(elapsed.TotalSeconds % 60)}s ago"
+            : $"{(int)elapsed.TotalHours}h {(int)(elapsed.TotalMinutes % 60)}m ago";
+    }
+
+    public void Dispose()
+    {
+        StateService.OnStateChanged -= _handler;
+        _uiRefreshTimer.Dispose();
+    }
+}

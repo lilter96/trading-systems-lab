@@ -1,0 +1,45 @@
+.env
+.env.local
+.env.*.local
+
+# Go binaries
+**/gateway-go/gateway-go
+**/osint-go/osint-go
+**/watchdog-go/watchdog-go
+*.exe
+*.test
+
+# .NET build artifacts
+**/bin/
+**/obj/
+**/out/
+**/publish/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# AI / Editor config (user-specific)
+.claude/
+skills-lock.json
+ca.psiphon.*
+
+# Logs
+*.log
+logs/
+
+# Test coverage
+*.coverprofile
+*.out
+.env
+*.session
+*.sqlite
+*.sqlite3
+.claude/settings.local.json
+deployment/certs/

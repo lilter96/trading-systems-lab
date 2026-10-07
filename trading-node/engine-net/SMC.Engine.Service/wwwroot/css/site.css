@@ -1,0 +1,23 @@
+html, body {
+    height: 100%;
+    margin: 0;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+
+#blazor-error-ui {
+    display: none;
+    z-index: 1050;
+}
+
+.table-dark {
+    --bs-table-bg: #1a1d21;
+}
+
+.card {
+    border-width: 1px;
+    border-style: solid;
+}
+
+.badge {
+    font-size: 0.85rem;
+}

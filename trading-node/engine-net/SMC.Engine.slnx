@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="SMC.Engine.Backtester/SMC.Engine.Backtester.csproj" />
+  <Project Path="SMC.Engine.Core/SMC.Engine.Core.csproj" />
+  <Project Path="SMC.Engine.Service/SMC.Engine.Service.csproj" />
+  <Project Path="SMC.Engine.Tests/SMC.Engine.Tests.csproj" />
+</Solution>

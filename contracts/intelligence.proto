@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+package intelligence;
+
+option go_package = "trading-system/contracts/go/intelligencepb";
+
+import "google/protobuf/empty.proto";
+
+message SentimentUpdate {
+  string source = 1;
+  double polarity_score = 2;
+  string raw_text_extract = 3;
+  int64 timestamp = 4;
+}
+
+message OsintScore {
+  string instrument = 1;
+  string macro_component = 2;
+  string sentiment_component = 3;
+  string sentiment_volume = 4;
+  VolatilityRegime volatility_regime = 5;
+  int64 computed_at_unix_utc = 6;
+}
+
+service IntelligenceFeed {
+  rpc StreamOsintScores(stream OsintScore) returns (google.protobuf.Empty);
+}
+
+enum EventImpact {
+  EVENT_IMPACT_UNSPECIFIED = 0;
+  EVENT_IMPACT_LOW = 1;
+  EVENT_IMPACT_MEDIUM = 2;
+  EVENT_IMPACT_HIGH = 3;
+}
+
+enum VolatilityRegime {
+  VOLATILITY_REGIME_UNSPECIFIED = 0;
+  VOLATILITY_REGIME_NORMAL = 1;
+  VOLATILITY_REGIME_ELEVATED_PRE_EVENT = 2;
+  VOLATILITY_REGIME_ELEVATED_POST_EVENT = 3;
+}
+
+message EconomicEvent {
+  string event_id = 1;
+  string name = 2;
+  string country = 3;
+  EventImpact impact = 4;
+  int64 scheduled_at_unix_utc = 5;
+  optional double forecast = 6;
+  optional double previous = 7;
+  optional double actual = 8;
+  optional int64 actual_released_at_unix_utc = 9;
+}
+
+message InstrumentVolatilityRegime {
+  string instrument = 1;
+  VolatilityRegime regime = 2;
+  string active_event_id = 3;
+}

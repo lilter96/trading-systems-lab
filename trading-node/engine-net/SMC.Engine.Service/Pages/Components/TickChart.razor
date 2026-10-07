@@ -1,0 +1,240 @@
+@implements IAsyncDisposable
+@inject DashboardStateService StateService
+@inject IJSRuntime JS
+
+<div class="card bg-light border p-3 mb-3">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <h5 class="text-dark mb-0">Price Chart</h5>
+        <div class="btn-group btn-group-sm">
+            @foreach (var tf in Timeframes)
+            {
+                <button class="btn @(tf == _selectedTf ? "btn-primary" : "btn-outline-secondary")"
+                        @onclick="() => SelectTf(tf)">@tf</button>
+            }
+        </div>
+    </div>
+    <div id="tv-chart" style="width:100%;height:450px;"></div>
+</div>
+
+@code {
+    private static readonly string[] Timeframes = { "1m", "3m", "5m", "15m", "30m", "1h", "4h", "1d", "1w", "1mo" };
+    private string _selectedTf = "5m";
+    private bool _chartInitialized;
+    private int _lastCandleCount;
+    private readonly SemaphoreSlim _initLock = new(1, 1);
+    private readonly CancellationTokenSource _disposeCts = new();
+
+    protected override void OnInitialized()
+    {
+        StateService.OnStateChanged += OnStateChanged;
+        StateService.PoiSelectionChanged += OnPoiSelectionChanged;
+    }
+
+    private void OnStateChanged(StateChangeKind kind)
+    {
+        if (kind is StateChangeKind.Candles or StateChangeKind.Pois or StateChangeKind.Selection or StateChangeKind.All)
+        {
+            _ = InvokeAsync(() => RefreshChart(kind));
+        }
+    }
+
+    private void OnPoiSelectionChanged()
+    {
+        _ = InvokeAsync(() => RefreshChart(StateChangeKind.Selection));
+    }
+
+    private async Task RefreshChart(StateChangeKind kind)
+    {
+        if (!_chartInitialized) return;
+
+        if (kind is StateChangeKind.Candles or StateChangeKind.All)
+            await UpdateCandles();
+
+        if (kind is StateChangeKind.Pois or StateChangeKind.Selection or StateChangeKind.All)
+            await UpdateZones();
+
+        if (kind is StateChangeKind.Candles)
+            await UpdateZones();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_chartInitialized)
+        {
+            await _initLock.WaitAsync();
+            try
+            {
+                if (!_chartInitialized)
+                {
+                    await JS.InvokeVoidAsync("console.log", "[Chart] Initializing chart");
+                    await JS.InvokeVoidAsync("createChartController", "tv-chart");
+                    _chartInitialized = true;
+                    await RefreshChart(StateChangeKind.All);
+                }
+            }
+            catch (Exception ex)
+            {
+                await JS.InvokeVoidAsync("console.log", "[Chart] Init failed: " + ex.Message);
+            }
+            finally
+            {
+                _initLock.Release();
+            }
+        }
+    }
+
+    private async Task SelectTf(string tf)
+    {
+        _selectedTf = tf;
+        _lastCandleCount = 0;
+        await RefreshChart(StateChangeKind.Candles);
+    }
+
+    private async Task UpdateCandles()
+    {
+        var candles = StateService.GetCandles(_selectedTf);
+        if (candles.Count == 0) return;
+
+        try
+        {
+            if (candles.Count != _lastCandleCount)
+            {
+                var data = candles.Select(c => new
+                {
+                    time = ToChartTime(c.Timestamp, _selectedTf),
+                    open = c.Open,
+                    high = c.High,
+                    low = c.Low,
+                    close = c.Close,
+                }).ToArray();
+                await JS.InvokeVoidAsync("window._chartController.setCandles", data, true);
+            }
+            else
+            {
+                var last = candles[^1];
+                await JS.InvokeVoidAsync("window._chartController.updateCandle", new
+                {
+                    time = ToChartTime(last.Timestamp, _selectedTf),
+                    open = last.Open,
+                    high = last.High,
+                    low = last.Low,
+                    close = last.Close,
+                });
+            }
+            _lastCandleCount = candles.Count;
+        }
+        catch
+        {
+        }
+    }
+
+    private async Task UpdateZones()
+    {
+        var selected = StateService.GetSelectedPois() ?? Enumerable.Empty<POI>();
+        var autoPois = StateService.GetActivePois()
+            .Where(z => z.Timeframe == _selectedTf &&
+                        (z.Status == POIStatus.Active || z.Status == POIStatus.PartiallyMitigated));
+
+        var displayPois = selected.Union(autoPois)
+            .DistinctBy(z => $"{z.Instrument}_{z.Type}_{z.UpperBound}_{z.LowerBound}")
+            .ToList();
+
+        if (displayPois.Count == 0)
+        {
+            await JS.InvokeVoidAsync("window._chartController.clearZones");
+            return;
+        }
+
+        var zones = displayPois.Select(z =>
+        {
+            var isBullish = z.Bias == MarketBias.Bullish;
+            var isFvg = z.Type == POIType.FairValueGap;
+            var baseColor = isBullish ? "26,167,84" : "220,53,69";
+            return new
+            {
+                upper = (double)z.UpperBound,
+                lower = (double)z.LowerBound,
+                fillColor = $"rgba({baseColor},0.12)",
+                borderColor = isBullish ? "#198754" : "#dc3545",
+                lineDash = isFvg,
+                formedAt = ToChartTime(z.FormedAt, _selectedTf),
+            };
+        }).ToArray();
+
+        var markers = displayPois
+            .Where(z => z.Status == POIStatus.Active)
+            .Select(z =>
+            {
+                var isBullish = z.Bias == MarketBias.Bullish;
+                var isFvg = z.Type == POIType.FairValueGap;
+                return new
+                {
+                    time = ToChartTime(z.FormedAt, _selectedTf),
+                    position = isBullish ? "belowBar" : "aboveBar",
+                    color = isBullish ? "#198754" : "#dc3545",
+                    shape = isFvg ? "circle" : "square",
+                    text = $"{(isFvg ? "FVG" : "OB")} {(double)z.LowerBound:F2}-{(double)z.UpperBound:F2}",
+                };
+            })
+            .ToArray();
+
+        try
+        {
+            await JS.InvokeVoidAsync("window._chartController.setZones", zones);
+            await JS.InvokeVoidAsync("window._chartController.setMarkers", markers);
+        }
+        catch
+        {
+        }
+    }
+
+    private static long ToChartTime(DateTimeOffset ts, string tf)
+    {
+        if (string.IsNullOrEmpty(tf)) return ts.ToUnixTimeSeconds();
+        var unit = tf.ToLower().Trim();
+
+        if (unit.EndsWith("m") && int.TryParse(unit.Replace("m", ""), out var m))
+        {
+            var seconds = ts.ToUnixTimeSeconds();
+            var intervalSeconds = m * 60;
+            return (seconds / intervalSeconds) * intervalSeconds;
+        }
+
+        if (unit.EndsWith("h") && int.TryParse(unit.Replace("h", ""), out var h))
+        {
+            var seconds = ts.ToUnixTimeSeconds();
+            var intervalSeconds = h * 3600;
+            return (seconds / intervalSeconds) * intervalSeconds;
+        }
+
+        return tf switch
+        {
+            "1d" => new DateTimeOffset(ts.Year, ts.Month, ts.Day, 0, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds(),
+            "1w" => GetStartOfWeek(ts).ToUnixTimeSeconds(),
+            "1mo" => new DateTimeOffset(ts.Year, ts.Month, 1, 0, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds(),
+            _ => ts.ToUnixTimeSeconds(),
+        };
+    }
+
+    private static DateTimeOffset GetStartOfWeek(DateTimeOffset ts)
+    {
+        var diff = (7 + (ts.DayOfWeek - DayOfWeek.Monday)) % 7;
+        return new DateTimeOffset(ts.Year, ts.Month, ts.Day, 0, 0, 0, TimeSpan.Zero).AddDays(-diff);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        StateService.OnStateChanged -= OnStateChanged;
+        StateService.PoiSelectionChanged -= OnPoiSelectionChanged;
+        _disposeCts.Cancel();
+        _disposeCts.Dispose();
+        _initLock.Dispose();
+        try
+        {
+            await JS.InvokeVoidAsync("window._chartController.destroy");
+        }
+        catch
+        {
+        }
+    }
+}

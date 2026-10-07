@@ -1,0 +1,74 @@
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - ./clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ch_data:/var/lib/clickhouse
+    environment:
+      CLICKHOUSE_DB: trading
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+
+  postgres:
+    image: postgres:16
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: trading_engine
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d trading_engine"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  gateway-go:
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile.gateway
+    ports:
+      - "50050:50050"
+    env_file:
+      - ../trading-node/gateway-go/.env
+    environment:
+      GRPC_EMERGENCY_PORT: "50050"
+      GRPC_TARGET: engine-net:50051
+      GRPC_CA_CERT: /certs/ca.crt
+      GRPC_GATEWAY_CERT: /certs/gateway.crt
+      GRPC_GATEWAY_KEY: /certs/gateway.key
+    volumes:
+      - ./certs:/certs:ro
+    depends_on:
+      clickhouse:
+        condition: service_started
+
+  engine-net:
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile.engine
+    ports:
+      - "50051:50051"
+      - "50053:50053"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      GRPC_CA_CERT: /certs/ca.crt
+      GRPC_ENGINE_CERT: /certs/server.crt
+      GRPC_ENGINE_KEY: /certs/server.key
+      ENGINE_DB_HOST: postgres
+      ENGINE_DB_PORT: "5432"
+    volumes:
+      - ./certs:/certs:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  ch_data:
+  pg_data:

@@ -1,0 +1,349 @@
+@implements IDisposable
+
+<div class="card bg-light border p-3 mb-3">
+    <div class="d-flex justify-content-between align-items-center border-bottom border-secondary pb-2 mb-2">
+        <h5 class="text-dark mb-0">Points of Interest</h5>
+        <div class="btn-group btn-group-sm">
+            <button class="btn btn-outline-primary" @onclick="SelectAllFiltered">Select All</button>
+            <button class="btn btn-outline-secondary" @onclick="InvertSelection">Invert</button>
+            <button class="btn btn-outline-danger" @onclick="ClearSelection">Clear</button>
+        </div>
+    </div>
+
+    <div class="d-flex flex-wrap gap-1 mb-2 small">
+        <div class="btn-group btn-group-sm me-2">
+            <span class="btn btn-outline-secondary disabled">Type</span>
+            <button class="btn btn-sm @FvgBtnClass" @onclick="ToggleFvg">FVG</button>
+            <button class="btn btn-sm @ObBtnClass" @onclick="ToggleOb">OB</button>
+        </div>
+        <div class="btn-group btn-group-sm me-2">
+            <span class="btn btn-outline-secondary disabled">Dir</span>
+            <button class="btn btn-sm @BullBtnClass" @onclick="ToggleBull">Bull</button>
+            <button class="btn btn-sm @BearBtnClass" @onclick="ToggleBear">Bear</button>
+        </div>
+        <div class="btn-group btn-group-sm me-2">
+            <span class="btn btn-outline-secondary disabled">Status</span>
+            <button class="btn btn-sm @ActiveBtnClass" @onclick="ToggleActive">Active</button>
+            <button class="btn btn-sm @PartialBtnClass" @onclick="TogglePartial">Partial</button>
+            <button class="btn btn-sm @InvBtnClass" @onclick="ToggleInv">Inv</button>
+        </div>
+        <div class="btn-group btn-group-sm">
+            <span class="btn btn-outline-secondary disabled">TF</span>
+            @foreach (var tf in _allTimeframes)
+            {
+                <button class="btn btn-sm @(TfBtnClass(tf))" @onclick="() => ToggleTf(tf)">@tf</button>
+            }
+        </div>
+    </div>
+
+    @if (!_hasData)
+    {
+        <div class="text-center py-4">
+            <div class="spinner-border spinner-border-sm text-secondary me-2" role="status"></div>
+            <span class="text-muted">Loading POIs...</span>
+        </div>
+    }
+    else if (_filtered.Count == 0)
+    {
+        <p class="text-muted text-center py-3 mb-0">
+            No POIs match the current filters.
+            <a href="#" class="text-decoration-none" @onclick="ResetAllFilters" @onclick:preventDefault="true">Reset filters</a>
+        </p>
+    }
+    else
+    {
+        <div class="table-responsive" style="max-height: 400px; overflow-y: auto;" tabindex="0">
+            <table class="table table-sm table-hover mb-0">
+                <thead style="position: sticky; top: 0;" class="table-light">
+                    <tr>
+                        <th style="width:32px;"></th>
+                        <th style="width:32px;"></th>
+                        <th class="sortable" @onclick="@(() => ToggleSort("instrument"))">Inst</th>
+                        <th class="sortable" @onclick="@(() => ToggleSort("type"))">Type</th>
+                        <th class="sortable" @onclick="@(() => ToggleSort("direction"))">Dir</th>
+                        <th class="sortable" @onclick="@(() => ToggleSort("bounds"))">Bounds</th>
+                        <th class="sortable" @onclick="@(() => ToggleSort("timeframe"))">TF</th>
+                        <th class="sortable" @onclick="@(() => ToggleSort("status"))">Status</th>
+                        <th class="sortable" @onclick="@(() => ToggleSort("formedAt"))">Formed</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var poi in _filtered)
+                    {
+                        var selected = _selectedPois.Contains(poi);
+                        <tr class="@(selected ? "table-primary" : "")"
+                            style="cursor:pointer;"
+                            @onclick="() => TogglePoi(poi)"
+                            @onkeydown="@(_ => {})"
+                            @key="@poi.GetHashCode()">
+                            <td>
+                                <input type="checkbox" class="form-check-input"
+                                       checked="@selected"
+                                       @onclick:stopPropagation
+                                       @onclick="() => TogglePoi(poi)" />
+                            </td>
+                            <td>
+                                <span class="@(selected ? "text-primary" : "text-muted")" style="cursor:pointer;"
+                                      @onclick:stopPropagation
+                                      @onclick="() => TogglePoi(poi)">
+                                    @(selected ? "*" : "o")
+                                </span>
+                            </td>
+                            <td class="small">@poi.Instrument</td>
+                            <td><span class="badge bg-info text-dark">@poi.Type</span></td>
+                            <td class="small fw-bold @(poi.Bias == MarketBias.Bullish ? "text-success" : "text-danger")">
+                                @DisplayDirection(poi)
+                            </td>
+                            <td class="small">
+                                <span class="text-success">@poi.LowerBound.ToString("F2")</span>
+                                &ndash;
+                                <span class="text-danger">@poi.UpperBound.ToString("F2")</span>
+                            </td>
+                            <td>
+                                @if (IsHigherTimeframe(poi.Timeframe))
+                                {
+                                    <span class="badge bg-info text-dark fw-bold">@poi.Timeframe</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">@poi.Timeframe</span>
+                                }
+                            </td>
+                            <td>
+                                @switch (poi.Status)
+                                {
+                                    case POIStatus.Active:
+                                        <span class="badge bg-success">Active</span>
+                                        break;
+                                    case POIStatus.PartiallyMitigated:
+                                        <span class="badge bg-warning text-dark">Partial</span>
+                                        break;
+                                    case POIStatus.Invalidated:
+                                        <span class="badge bg-danger">Inv</span>
+                                        break;
+                                }
+                            </td>
+                            <td class="small text-muted">@poi.FormedAt.ToLocalTime().ToString("MM/dd HH:mm")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <div class="d-flex justify-content-between align-items-center mt-1">
+            <div class="small text-muted">
+                @_filtered.Count / @_allPois.Count POIs shown &middot; @_selectedPois.Count selected
+            </div>
+            <div class="small text-muted">
+                <kbd>↑</kbd> <kbd>↓</kbd> navigate &middot; <kbd>Space</kbd> toggle &middot; <kbd>Ctrl+A</kbd> select all
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Inject] private DashboardStateService StateService { get; set; } = default!;
+
+    private List<POI> _allPois = new();
+    private List<POI> _filtered = new();
+    private HashSet<POI> _selectedPois = new();
+    private bool _hasData;
+
+    private HashSet<string> _filterType = new() { "FairValueGap", "OrderBlock" };
+    private HashSet<string> _filterBias = new() { "Bullish", "Bearish" };
+    private HashSet<string> _filterStatus = new() { "Active", "Partial", "Invalidated" };
+    private HashSet<string> _filterTf = new();
+    private List<string> _allTimeframes = new();
+
+    private string _sortColumn = "formedAt";
+    private bool _sortDesc = true;
+
+    private string FvgBtnClass => _filterType.Contains("FairValueGap") ? "btn-info" : "btn-outline-info";
+    private string ObBtnClass => _filterType.Contains("OrderBlock") ? "btn-info" : "btn-outline-info";
+    private string BullBtnClass => _filterBias.Contains("Bullish") ? "btn-success" : "btn-outline-success";
+    private string BearBtnClass => _filterBias.Contains("Bearish") ? "btn-danger" : "btn-outline-danger";
+    private string ActiveBtnClass => _filterStatus.Contains("Active") ? "btn-success" : "btn-outline-success";
+    private string PartialBtnClass => _filterStatus.Contains("Partial") ? "btn-warning" : "btn-outline-warning";
+    private string InvBtnClass => _filterStatus.Contains("Invalidated") ? "btn-danger" : "btn-outline-danger";
+    private string TfBtnClass(string tf) => _filterTf.Contains(tf) ? "btn-secondary" : "btn-outline-secondary";
+
+    protected override void OnInitialized()
+    {
+        StateService.OnStateChanged += OnStateChanged;
+        StateService.PoiSelectionChanged += OnPoiSelectionChanged;
+        Refresh();
+    }
+
+    private void OnStateChanged(StateChangeKind kind)
+    {
+        if (kind is StateChangeKind.Pois or StateChangeKind.Selection or StateChangeKind.All)
+            _ = InvokeAsync(Refresh);
+    }
+
+    private void OnPoiSelectionChanged()
+    {
+        _ = InvokeAsync(() =>
+        {
+            _selectedPois = StateService.GetSelectedPois().ToHashSet();
+            StateHasChanged();
+        });
+    }
+
+    private void Refresh()
+    {
+        _allPois = StateService.GetActivePois().ToList();
+        _hasData = _allPois.Count > 0;
+        _selectedPois = StateService.GetSelectedPois().ToHashSet();
+
+        _allTimeframes = _allPois.Select(p => p.Timeframe).Distinct().Order().ToList();
+        if (_filterTf.Count == 0 && _allTimeframes.Count > 0)
+            _filterTf = _allTimeframes.ToHashSet();
+
+        ApplyFilters();
+        StateHasChanged();
+    }
+
+    private void ApplyFilters()
+    {
+        var query = _allPois
+            .Where(p => _filterType.Contains(p.Type.ToString()))
+            .Where(p => _filterBias.Contains(p.Bias.ToString()))
+            .Where(p => _filterStatus.Contains(p.Status switch
+            {
+                POIStatus.Active => "Active",
+                POIStatus.PartiallyMitigated => "Partial",
+                POIStatus.Invalidated => "Invalidated",
+                _ => "Active"
+            }))
+            .Where(p => _filterTf.Contains(p.Timeframe));
+
+        _filtered = (_sortDesc
+            ? query.OrderByDescending(p => SortKey(p))
+            : query.OrderBy(p => SortKey(p)))
+            .ToList();
+    }
+
+    private string SortKey(POI p) => _sortColumn switch
+    {
+        "instrument" => p.Instrument,
+        "type" => p.Type.ToString(),
+        "direction" => p.Bias.ToString(),
+        "bounds" => p.LowerBound.ToString("F8"),
+        "timeframe" => p.Timeframe,
+        "status" => p.Status.ToString(),
+        "formedAt" => p.FormedAt.Ticks.ToString(),
+        _ => p.FormedAt.Ticks.ToString(),
+    };
+
+    private void ToggleSort(string col)
+    {
+        if (_sortColumn == col)
+            _sortDesc = !_sortDesc;
+        else
+        {
+            _sortColumn = col;
+            _sortDesc = col is "formedAt" or "bounds";
+        }
+        ApplyFilters();
+    }
+
+    private void ToggleFvg() => ToggleTypeFilter("FairValueGap");
+    private void ToggleOb() => ToggleTypeFilter("OrderBlock");
+    private void ToggleBull() => ToggleBiasFilter("Bullish");
+    private void ToggleBear() => ToggleBiasFilter("Bearish");
+    private void ToggleActive() => ToggleStatusFilter("Active");
+    private void TogglePartial() => ToggleStatusFilter("Partial");
+    private void ToggleInv() => ToggleStatusFilter("Invalidated");
+
+    private void ToggleTypeFilter(string val)
+    {
+        if (!_filterType.Remove(val))
+            _filterType.Add(val);
+        ApplyFilters();
+    }
+
+    private void ToggleBiasFilter(string val)
+    {
+        if (!_filterBias.Remove(val))
+            _filterBias.Add(val);
+        ApplyFilters();
+    }
+
+    private void ToggleStatusFilter(string val)
+    {
+        if (!_filterStatus.Remove(val))
+            _filterStatus.Add(val);
+        ApplyFilters();
+    }
+
+    private void ToggleTf(string tf)
+    {
+        if (!_filterTf.Remove(tf))
+            _filterTf.Add(tf);
+        ApplyFilters();
+    }
+
+    private void ResetAllFilters(MouseEventArgs e)
+    {
+        _filterType = new() { "FairValueGap", "OrderBlock" };
+        _filterBias = new() { "Bullish", "Bearish" };
+        _filterStatus = new() { "Active", "Partial", "Invalidated" };
+        _filterTf = _allTimeframes.ToHashSet();
+        ApplyFilters();
+    }
+
+    private void TogglePoi(POI poi)
+    {
+        StateService.ToggleSelectedPoi(poi);
+    }
+
+    private void SelectAllFiltered()
+    {
+        StateService.SelectAllFiltered(_filtered);
+    }
+
+    private void InvertSelection()
+    {
+        StateService.InvertSelection(_filtered);
+    }
+
+    private void ClearSelection()
+    {
+        StateService.ClearSelectedPois();
+    }
+
+    private string DisplayDirection(POI poi)
+    {
+        var bias = poi.ConfirmingBreak?.ResultingBias;
+        if (bias.HasValue)
+        {
+            return bias.Value switch
+            {
+                Bias.Bullish => "Bullish",
+                Bias.Bearish => "Bearish",
+                _ => "Undetermined"
+            };
+        }
+        return poi.Bias switch
+        {
+            MarketBias.Bullish => "Bullish",
+            MarketBias.Bearish => "Bearish",
+            _ => "Undetermined"
+        };
+    }
+
+    private static bool IsHigherTimeframe(string timeframe)
+    {
+        if (string.IsNullOrWhiteSpace(timeframe)) return false;
+        var tf = timeframe.ToLower().Trim();
+        if (tf.Contains('h') || tf.Contains('d') || tf.Contains('w')) return true;
+        if (tf.EndsWith('m') && int.TryParse(tf.Replace("m", ""), out var minutes))
+            return minutes >= 60;
+        return false;
+    }
+
+    public void Dispose()
+    {
+        StateService.OnStateChanged -= OnStateChanged;
+        StateService.PoiSelectionChanged -= OnPoiSelectionChanged;
+    }
+}

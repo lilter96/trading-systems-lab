@@ -1,0 +1,75 @@
+@using Common
+@using Grpc.Net.Client
+@implements IDisposable
+
+<div class="panic-container">
+    @if (!_isConfirmed)
+    {
+        <button class="btn btn-danger btn-lg w-100 py-3" @onclick="PrepareHalt">
+            ⚠️ EMERGENCY PANIC CLOSE
+        </button>
+    }
+    else
+    {
+        <div class="confirm-modal p-3 border border-danger rounded bg-dark text-white text-center">
+            <h4 class="text-danger fw-bold">CONFIRM LIQUIDATION?</h4>
+            <p class="text-muted small">This action immediately cancels all active orders, algorithm trigger levels, and closes all open positions at market rates.</p>
+            <div class="d-flex justify-content-around mt-3">
+                <button class="btn btn-secondary px-4" @onclick="CancelHalt">No, Cancel</button>
+                <button class="btn btn-danger px-4 fw-bold" @onclick="ConfirmAndHalt" disabled="@_isProcessing">
+                    @(_isProcessing ? "LIQUIDATING..." : "YES, HALT SYSTEM NOW")
+                </button>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Inject] private NavigationManager NavManager { get; set; } = default!;
+    [Inject] private IConfiguration Configuration { get; set; } = default!;
+    [Inject] private DashboardStateService StateService { get; set; } = default!;
+    [Inject] private EmergencyLoopbackClient EmergencyClient { get; set; } = default!;
+
+    private bool _isConfirmed;
+    private bool _isProcessing;
+
+    private void PrepareHalt() => _isConfirmed = true;
+    private void CancelHalt() => _isConfirmed = false;
+
+    private async Task ConfirmAndHalt()
+    {
+        _isProcessing = true;
+        StateHasChanged();
+
+        try
+        {
+            var request = new HaltRequest
+            {
+                Reason = "Manual operator emergency dashboard trigger",
+                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                TriggeredBy = string.IsNullOrWhiteSpace(StateService.CurrentOperator)
+                    ? "dashboard-panic-button"
+                    : $"dashboard-panic-button|operator={StateService.CurrentOperator}|session={StateService.CurrentSessionId}"
+            };
+
+            var response = await EmergencyClient.HaltSystemAsync(request);
+
+            if (response.Success)
+            {
+                StateService.UpdateSystemStatus("HALTED");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[PANIC] Emergency halt call failed: {ex.Message}");
+        }
+        finally
+        {
+            _isProcessing = false;
+            _isConfirmed = false;
+            StateHasChanged();
+        }
+    }
+
+    public void Dispose() { }
+}

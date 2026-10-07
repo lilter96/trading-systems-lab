@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package marketdata;
+
+option go_package = "trading-system/contracts/go/marketdatapb";
+
+import "common.proto";
+
+message PriceLevel {
+  string price = 1;
+  string buy_volume = 2;
+  string sell_volume = 3;
+}
+
+message TickData {
+  int64 timestamp_ns = 1;
+  string price = 2;
+  string quantity = 3;
+  string side = 4;
+  string open_interest = 5;
+}
+
+message BarData {
+  int64 timestamp = 1;
+  string timeframe = 2;
+  string open = 3;
+  string high = 4;
+  string low = 5;
+  string close = 6;
+  string volume = 7;
+  string open_interest = 8;
+  string vwap = 9;
+  string buy_sell_volume_delta = 10;
+  repeated PriceLevel footprint = 11;
+}
+
+service MarketDataFeed {
+  rpc StreamBars(stream BarData) returns (stream common.CommandAck);
+}

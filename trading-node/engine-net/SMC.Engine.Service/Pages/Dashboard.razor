@@ -1,0 +1,70 @@
+@page "/dashboard"
+@implements IDisposable
+
+<div class="container-fluid min-vh-100 p-4">
+    <div class="row mb-4 align-items-center">
+        <div class="col">
+            <h1 class="display-5 fw-bold">SMC Risk Control Dashboard</h1>
+        </div>
+        <div class="col text-end">
+            <span class="h4 badge @(StateService.SystemStatus == "ACTIVE" ? "bg-success" : "bg-warning text-dark") px-4 py-2">
+                @if (StateService.SystemStatus == "INITIALIZING")
+                {
+                    <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                }
+                SYSTEM: @StateService.SystemStatus
+            </span>
+        </div>
+    </div>
+
+<div class="row">
+    <div class="col-md-4">
+        <HeartbeatWidget />
+
+        <div class="card bg-light border p-3 mb-3">
+            <h5 class="text-dark">Data Telemetry</h5>
+            @if (StateService.HasTelemetry)
+            {
+                <p class="h3 text-primary mb-1">@StateService.TicksPerSecond.ToString("N0") <small class="text-muted h6">ticks/sec</small></p>
+                <p class="h5 mb-1">Last price: <span class="text-success fw-bold">@StateService.LastPrice.ToString("F2")</span></p>
+                <p class="small text-muted mb-0">Total ticks: @StateService.TotalTicks.ToString("N0") · @(StateService.HasReceivedData ? $"Last bar: {StateService.LastBarTime?.ToLocalTime().ToString("HH:mm:ss")}" : "Waiting for first bar...")</p>
+            }
+            else
+            {
+                <p class="text-warning mb-1"><span class="spinner-border spinner-border-sm me-2" role="status"></span>Waiting for telemetry...</p>
+                <p class="small text-muted mb-0">Started @StateService.StartupTime.ToLocalTime().ToString("HH:mm:ss")</p>
+            }
+        </div>
+
+        <div class="card bg-light border p-3">
+            <PanicButton />
+        </div>
+    </div>
+
+    <div class="col-md-8">
+        <ActivePoisTable />
+    </div>
+</div>
+
+<div class="row mt-3">
+    <div class="col-12">
+        <TickChart />
+    </div>
+</div>
+</div>
+
+@code {
+    [Inject] private DashboardStateService StateService { get; set; } = default!;
+    private Action<StateChangeKind> _handler = default!;
+
+    protected override void OnInitialized()
+    {
+        _handler = _ => InvokeAsync(StateHasChanged);
+        StateService.OnStateChanged += _handler;
+    }
+
+    public void Dispose()
+    {
+        StateService.OnStateChanged -= _handler;
+    }
+}

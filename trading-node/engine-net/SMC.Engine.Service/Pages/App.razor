@@ -1,0 +1,17 @@
+@using SMC.Engine.Service.Pages.Components
+
+<Router AppAssembly="@typeof(App).Assembly">
+    <Found Context="routeData">
+        <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
+    </Found>
+    <NotFound>
+        <PageTitle>Not Found</PageTitle>
+        <div class="container-fluid bg-dark text-white min-vh-100 d-flex align-items-center justify-content-center">
+            <div class="text-center">
+                <h1 class="display-1 text-danger">404</h1>
+                <p class="lead">The page you requested does not exist.</p>
+                <a href="/dashboard" class="btn btn-outline-light mt-3">Return to Dashboard</a>
+            </div>
+        </div>
+    </NotFound>
+</Router>
